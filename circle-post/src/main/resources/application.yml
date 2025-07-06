@@ -1,0 +1,17 @@
+server:
+#  servlet:
+#    context-path: /content
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:13306/communication_circle?serverTimezone=UTC&userUnicode=true&useSSL=false&
+    username: root
+    password: 123456
+
+  profiles:
+    active: dev
+# 日志文件配置路径
+logging:
+  config: classpath:log4j2.xml
