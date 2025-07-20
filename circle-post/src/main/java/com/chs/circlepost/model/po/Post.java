@@ -44,16 +44,6 @@ public class Post implements Serializable {
     private Integer genreId;
 
     /**
-     * 点赞数
-     */
-    private Integer likeCount;
-
-    /**
-     * 评论数
-     */
-    private Integer commentCount;
-
-    /**
      * 圈子id
      */
     private Integer circleId;

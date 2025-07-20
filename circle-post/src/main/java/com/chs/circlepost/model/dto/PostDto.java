@@ -26,4 +26,39 @@ public class PostDto extends Post {
      */
     private String circle;
 
+    /**
+     * 点赞数
+     */
+    private Integer likeCount;
+
+    /**
+     * 评论数
+     */
+    private Integer commentCount;
+
+    /**
+     * 收藏数
+     */
+    private Integer collectCount;
+
+    /**
+     * 用户信息
+     */
+    private UserDto userInfo;
+
+    /**
+     * 是否点赞
+     */
+    private boolean isLike;
+
+    /**
+     * 是否收藏
+     */
+    private boolean isCollect;
+
+    /**
+     * 发布地
+     */
+    private String postPlace;
+
 }

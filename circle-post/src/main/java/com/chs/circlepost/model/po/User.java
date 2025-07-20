@@ -69,6 +69,11 @@ public class User implements Serializable {
     private Integer schoolId;
 
     /**
+     * 头像
+     */
+    private String avatar;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

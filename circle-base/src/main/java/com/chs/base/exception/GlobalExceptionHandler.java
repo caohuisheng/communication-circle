@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ErrorResult exception(Exception e) {
         log.error("【系统异常】{}",e.getMessage(),e);
-        if(e.getMessage().equals("不允许访问")){
+        if("不允许访问".equals(e.getMessage())){
             return new ErrorResult("您没有权限操作此功能");
         }
         return new ErrorResult(CommonError.UNKNOWN_ERROR.getErrMessage());

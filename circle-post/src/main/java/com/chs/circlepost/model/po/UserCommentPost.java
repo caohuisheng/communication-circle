@@ -49,6 +49,11 @@ public class UserCommentPost implements Serializable {
     private Integer commentId;
 
     /**
+     * 上级评论id
+     */
+    private Integer parentId;
+
+    /**
      * 评论时间
      */
     private LocalDateTime commentTime;

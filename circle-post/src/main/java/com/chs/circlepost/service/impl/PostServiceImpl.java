@@ -8,6 +8,7 @@ import com.chs.base.exception.CircleException;
 import com.chs.base.model.PageResult;
 import com.chs.circlepost.mapper.*;
 import com.chs.circlepost.model.dto.AddUpdatePostParams;
+import com.chs.circlepost.model.dto.CommentPostParams;
 import com.chs.circlepost.model.dto.PostDto;
 import com.chs.circlepost.model.dto.QueryPostParams;
 import com.chs.circlepost.model.po.*;
@@ -43,6 +44,14 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private GenreMapper genreMapper;
     @Autowired
     private CircleMapper circleMapper;
+    @Autowired
+    private PostCircleMapper postCircleMapper;
+    @Autowired
+    private UserLikePostMapper userLikePostMapper;
+    @Autowired
+    private UserCommentPostMapper userCommentPostMapper;
+    @Autowired
+    private UserCollectPostMapper userCollectPostMapper;
 
     @Override
     public void savePost(AddUpdatePostParams params) {
@@ -51,6 +60,9 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         BeanUtils.copyProperties(params, post);
         this.save(post);
         savePostTopic(topics, post.getId());
+        if(post.getCircleId() != null){
+            savePostCircle(params.getCircleId(), post.getId());
+        }
     }
 
     @Override
@@ -59,11 +71,24 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         Post post = new Post();
         BeanUtils.copyProperties(params, post);
         this.updateById(post);
+        // 删除已有的帖子-主题映射
+        LambdaQueryWrapper<PostTopic> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(PostTopic::getPostId, params.getId());
+        postTopicMapper.delete(lqw);
+        // 保存帖子-主题映射
         savePostTopic(topics, post.getId());
+        if(post.getCircleId() != null){
+            // 删除已有的帖子-圈子映射
+            LambdaQueryWrapper<PostCircle> lqw2 = new LambdaQueryWrapper<>();
+            lqw2.eq(PostCircle::getPostId, post.getId());
+            postCircleMapper.delete(lqw2);
+            // 保存帖子-圈子映射
+            savePostCircle(params.getCircleId(), params.getId());
+        }
     }
 
     @Override
-    public PageResult<PostDto> queryPost(QueryPostParams params) {
+    public PageResult<PostDto> queryPost(QueryPostParams params, Integer userId) {
         LambdaQueryWrapper<Post> lqw = new LambdaQueryWrapper<>();
         if(StringUtils.isNotBlank(params.getKeyWord())){
             String key = params.getKeyWord();
@@ -79,6 +104,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             List<Integer> postIds = postTopics.stream().map(PostTopic::getPostId).collect(Collectors.toList());
             lqw.in(Post::getId, postIds);
         }
+        lqw.orderByDesc(Post::getCreateTime);
 
         Page<Post> page = new Page<>(params.getPage(), params.getPageSize());
         postMapper.selectPage(page, lqw);
@@ -97,10 +123,47 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 Circle circle = circleMapper.selectById(post.getCircleId());
                 postDto.setCircle(circle.getCircleName());
             }
+            Integer postId = post.getId();
+            postDto.setLikeCount(getLikeCount(postId));
+            postDto.setCommentCount(getCommentCount(postId));
+            postDto.setCollectCount(getCollectCount(postId));
+            postDto.setLike(isLike(postId, userId));
+            postDto.setCollect(isCollect(postId, userId));
             postDtos.add(postDto);
         }
 
         return new PageResult<>(postDtos, count);
+    }
+
+    @Override
+    public void removeById(Integer postId) {
+        // 删除帖子-主题关联表数据
+        LambdaQueryWrapper<PostTopic> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(PostTopic::getPostId, postId);
+        postTopicMapper.delete(lqw);
+
+        // 删除帖子-圈子关联表数据
+        Post post = this.getById(postId);
+        if(post.getCircleId() != null){
+            LambdaQueryWrapper<PostCircle> lqw2 = new LambdaQueryWrapper<>();
+            lqw2.eq(PostCircle::getPostId, postId);
+            postCircleMapper.delete(lqw2);
+        }
+
+        // 删除帖子-点赞关联表数据
+        LambdaQueryWrapper<UserLikePost> lqw3 = new LambdaQueryWrapper<>();
+        lqw3.eq(UserLikePost::getPostId, postId);
+        userLikePostMapper.delete(lqw3);
+        // 删除帖子-收藏关联表数据
+        LambdaQueryWrapper<UserCollectPost> lqw4 = new LambdaQueryWrapper<>();
+        lqw4.eq(UserCollectPost::getPostId, postId);
+        userCollectPostMapper.delete(lqw4);
+        // 删除帖子-评论关联表数据
+        LambdaQueryWrapper<UserCommentPost> lqw5 = new LambdaQueryWrapper<>();
+        lqw5.eq(UserCommentPost::getPostId, postId);
+        userCommentPostMapper.delete(lqw5);
+        // 删除帖子
+        super.removeById(postId);
     }
 
     private String getFirstTopic(Integer postId){
@@ -134,8 +197,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     }
 
     private void savePostTopic(List<String> topics, Integer postId){
-        // 添加帖子中不存在的主题
         for(String topicName:topics){
+            // 添加帖子中不存在的主题
             LambdaQueryWrapper<Topic> lqw = new LambdaQueryWrapper<>();
             lqw.eq(Topic::getTopicName, topicName);
             Topic topicDB = topicMapper.selectOne(lqw);
@@ -157,4 +220,108 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
     }
 
+    private void savePostCircle(Integer circleId, Integer postId) {
+        PostCircle postCircle = new PostCircle();
+        postCircle.setCircleId(circleId);
+        postCircle.setPostId(postId);
+        postCircleMapper.insert(postCircle);
+    }
+
+    @Override
+    public PostDto queryPostById(Integer postId, Integer userId) {
+        Post post = this.getById(postId);
+        PostDto postDto = new PostDto();
+        BeanUtils.copyProperties(post, postDto);
+        // 查询帖子分类
+        Genre genre = genreMapper.selectById(post.getGenreId());
+        postDto.setGenre(genre.getGenreName());
+        // 查询帖子主题
+        String firstTopic = getFirstTopic(postId);
+        postDto.setTopic(firstTopic);
+        // 查询帖子圈子
+        if(post.getCircleId() != null){
+            Circle circle = circleMapper.selectById(post.getCircleId());
+            postDto.setCircle(circle.getCircleName());
+        }
+        postDto.setLikeCount(getLikeCount(postId));
+        postDto.setCommentCount(getCommentCount(postId));
+        postDto.setCollectCount(getCollectCount(postId));
+        postDto.setLike(isLike(postId, userId));
+        postDto.setCollect(isCollect(postId, userId));
+        return postDto;
+    }
+
+    private boolean isLike(Integer postId, Integer userId){
+        LambdaQueryWrapper<UserLikePost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserLikePost::getPostId, postId).eq(UserLikePost::getUserId, userId);
+        return userLikePostMapper.selectCount(lqw) > 0;
+    }
+
+    private boolean isCollect(Integer postId, Integer userId){
+        LambdaQueryWrapper<UserCollectPost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserCollectPost::getPostId, postId).eq(UserCollectPost::getUserId, userId);
+        return userCollectPostMapper.selectCount(lqw) > 0;
+    }
+
+    private Integer getLikeCount(Integer postId){
+        LambdaQueryWrapper<UserLikePost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserLikePost::getPostId, postId);
+        return userLikePostMapper.selectCount(lqw);
+    }
+
+    private Integer getCommentCount(Integer postId){
+        LambdaQueryWrapper<UserCommentPost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserCommentPost::getPostId, postId);
+        return userCommentPostMapper.selectCount(lqw);
+    }
+
+    private Integer getCollectCount(Integer postId){
+        LambdaQueryWrapper<UserCollectPost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserCollectPost::getPostId, postId);
+        return userCollectPostMapper.selectCount(lqw);
+    }
+
+    @Override
+    public void likePost(Integer postId, Integer userId) {
+        LambdaQueryWrapper<UserLikePost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserLikePost::getPostId, postId).eq(UserLikePost::getUserId, userId);
+        UserLikePost userLikePost = userLikePostMapper.selectOne(lqw);
+        // 存在则删除，不存在则添加
+        if(userLikePost != null){
+            userLikePostMapper.deleteById(userLikePost.getId());
+        }else{
+            UserLikePost userLikePostNew = new UserLikePost();
+            userLikePostNew.setPostId(postId);
+            userLikePostNew.setUserId(userId);
+            userLikePostMapper.insert(userLikePostNew);
+        }
+    }
+
+    @Override
+    public void commentPost(CommentPostParams params, Integer userId) {
+        UserCommentPost userCommentPost = new UserCommentPost();
+        userCommentPost.setPostId(params.getPostId());
+        userCommentPost.setCommentId(params.getCommentId());
+        userCommentPost.setContent(params.getContent());
+        userCommentPost.setParentId(params.getParentId());
+        userCommentPost.setUserId(userId);
+        userCommentPostMapper.insert(userCommentPost);
+    }
+
+    @Override
+    public void collectPost(Integer postId, Integer userId) {
+        LambdaQueryWrapper<UserCollectPost> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(UserCollectPost::getPostId, postId);
+        lqw.eq(UserCollectPost::getUserId, userId);
+        UserCollectPost userCollectPost = userCollectPostMapper.selectOne(lqw);
+        // 如果存在则删除，不存在则添加
+        if(userCollectPost != null){
+            userCollectPostMapper.deleteById(userCollectPost.getId());
+        }else{
+            UserCollectPost userCollectPostNew = new UserCollectPost();
+            userCollectPostNew.setPostId(postId);
+            userCollectPostNew.setUserId(userId);
+            userCollectPostMapper.insert(userCollectPostNew);
+        }
+    }
 }

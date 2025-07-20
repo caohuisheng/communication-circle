@@ -7,7 +7,7 @@ import javax.validation.constraints.NotNull;
 
 /**
  * Author: chs
- * Description:
+ * Description: 添加或更新帖子参数
  * CreateTime: 2025-07-05
  */
 @Data
@@ -33,4 +33,9 @@ public class AddUpdatePostParams {
      */
     @NotNull
     private Integer genreId;
+
+    /**
+     * 分类id
+     */
+    private Integer circleId;
 }
